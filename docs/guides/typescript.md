@@ -46,15 +46,77 @@ render(
 )
 ```
 
+## Creating a module types file
+
+You will typically create a separate file for the types. This will hold the types for the state and signals of the given module.
+
+*src/app/types.ts*
+```ts
+import { Dictionary, ComputedValue } from '@cerebral/fluent'
+import * as signals from './sequences'
+
+export type Signals = {
+  [key in keyof typeof signals]: typeof signals[key]
+};
+
+export type State = {
+  foo: string,
+  stringDictionary: Dictionary<string>,
+  isAwesome: ComputedValue<boolean>
+};
+```
+
+Signals can be typed by using **typeof** on the sequences of the module. This is a shorthand that will use the defined required props of the sequence as the payload to the signal.
+
+## Creating the app module
+
+*src/app/index.ts*
+```ts
+import { Module, Dictionary, Computed } from '@cerebral/fluent'
+import Router from '@cerebral/router'
+import * as a from './modules/a'
+import * as b from './modules/b'
+import * as signals from './sequences'
+import * as computed from './computed'
+import { State } from './types'
+
+const state: State = {
+  foo: 'bar',
+  stringDictionary: Dictionary({
+    foo: 'bar',
+    bar: 'baz'
+  }),
+  isAwesome: Computed(computed.isAwesome)
+}
+
+export const module = Module({
+  state,
+  signals,
+  modules: {
+    a: a.module,
+    b: b.module,
+    router: Router({...})
+  }
+})
+```
+
+By defining your state in its own variable you will get easier to read error reporting from Typescript.
+
 ## Creating the fluent file
 
 To ease development it is recommended to create a **fluent.ts** file which configures your application. This is an example of such a file:
 
 ```ts
 import { IContext, IBranchContext, SequenceFactory, SequenceWithPropsFactory, ConnectFactory } from '@cerebral/fluent'
-import { State, Signals, Providers } from './app/types'
+import { Provider as RouterProvider } from '@cerebral/router';
+import { State, Signals } from './app/types'
 
-// This interface is used when you define actions
+// Create an interface where you compose your providers
+interface Providers {
+  router: RouterProvider
+}
+
+// Create an interface used with your sequences and actions
 export interface Context<Props> extends IContext<Props>, Providers {
   state: State
 }
@@ -77,75 +139,44 @@ export const sequence = SequenceFactory<Context>();
 export const sequenceWithProps = SequenceWithPropsFactory<Context>();
 ```
 
-## Creating a module types file
+## Scaling up to submodules
 
-You will typically create a separate file for the types. This will hold the types for the state, signals and providers of a given module. The types file will also ensure composition with any submodules.
+When you have submodules you will need to compose in the complete state and signals. You do this in the **fluent** file like this:
 
-*src/app/types.ts*
 ```ts
-import { Dictionary, ComputedValue } from '@cerebral/fluent'
-import { Provider as RouterProvider } from '@cerebral/router'
-import * as a from './modules/a/types'
-import * as b from './modules/b/types'
-import * as signals from './sequences'
+import { IContext, IBranchContext, SequenceFactory, SequenceWithPropsFactory, ConnectFactory } from '@cerebral/fluent'
+import { Provider as RouterProvider } from '@cerebral/router';
+import * as app from  './app/types'
+import * as admin from './app/modules/admin/types'
+import * as dashboard from './app/modules/dashboard/types'
 
-export type ModuleState = {
-  foo: string,
-  stringDictionary: Dictionary<string>,
-  isAwesome: ComputedValue<boolean>
-};
-
-export type State = ModuleState & {
-  a: a.State,
-  b: b.State
-};
-
-export type ModuleSignals = {
-  [key in keyof typeof signals]: typeof signals[key]
-};
-
-export type Signals = ModuleSignals & {
-  a: a.Signals,
-  b: b.Signals
-};
-
-export interface Providers extends a.Providers, b.Providers {
-  router: RouterProvider;
-}
-```
-
-As you can see this file is all about bringing the types together. Inititally the ones for this module, but also exampled here bringing in the types of any submodules.
-
-## Creating the app module
-
-*src/app/index.ts*
-```ts
-import { Module, Dictionary, Computed } from '@cerebral/fluent'
-import Router from '@cerebral/router'
-import * as a from './modules/a'
-import * as b from './modules/b'
-import * as signals from './sequences'
-import * as computed from './computed'
-import { ModuleState } from './types'
-
-const state: ModuleState = {
-  foo: 'bar',
-  stringDictionary: Dictionary({
-    foo: 'bar',
-    bar: 'baz'
-  }),
-  isAwesome: Computed(computed.isAwesome)
+type State = app.State & {
+  admin: admin.State,
+  dashboard: dashboard.State
 }
 
-export const module = Module({
-  state,
-  signals,
-  modules: {
-    a: a.module,
-    b: b.module,
-    router: Router({...})
-  }
-})
+type Signals = app.Signals & {
+  admin: admin.Signals,
+  dashboard: dashboard.Signals
+}
+
+interface Providers {
+  router: RouterProvider
+}
+
+export interface Context<Props> extends IContext<Props>, Providers {
+  state: State
+}
+
+export interface BranchContext<Paths, Props> extends IBranchContext<Paths, Props>, Providers {
+  state: State
+}
+
+export const connect = ConnectFactory<State, Signals>();
+
+export const sequence = SequenceFactory<Context>();
+
+export const sequenceWithProps = SequenceWithPropsFactory<Context>();
 ```
 
 ## Creating sequences
@@ -370,3 +401,4 @@ Connecting to a class gives a callback with the prop which you can **typeof** in
 ## Computing values
 
 ## Dictionary
+
